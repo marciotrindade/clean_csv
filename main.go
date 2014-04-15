@@ -16,7 +16,16 @@ import (
 const REGEXP_EMAIL = `^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`
 
 func main() {
-  file, _ := os.Open("sample.csv")
+  if len(os.Args) < 2 {
+    fmt.Println("You need to set the filename\nexample: ./clean_csv sample.csv")
+    return
+  }
+
+  file, err := os.Open(os.Args[1])
+  if err != nil {
+    fmt.Println("Error:", err)
+    return
+  }
   defer file.Close()
 
   reader := csv.NewReader(file)
@@ -51,7 +60,7 @@ func main() {
     }
   }
 
-  path := "output"
+  path := path.Dir(os.Args[1]) + "/output"
   mkerr := os.MkdirAll(path, 0755)
   if mkerr != nil {
     fmt.Println("MkdirAll: %s %s", path, mkerr)
