@@ -15,18 +15,6 @@ import (
 
 const REGEXP_EMAIL = `^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`
 
-func ClearEmail(email string) string {
-  email = strings.TrimSpace(email)
-  email = strings.ToLower(email)
-  email = sanitize.Accents(email)
-  return email
-}
-
-func ValidEmail(email string) bool {
-  match, _ := regexp.MatchString(REGEXP_EMAIL, email)
-  return match
-}
-
 func main() {
   file, _ := os.Open("sample.csv")
   defer file.Close()
@@ -50,11 +38,11 @@ func main() {
       return
     }
     // record is an array of string so is directly printable
-    email := ClearEmail(record[0])
+    email := clearEmail(record[0])
     if existEmails[email] {
       duplicatedEmails = append(duplicatedEmails, email)
     } else {
-      if ValidEmail(email) {
+      if validEmail(email) {
         validEmails = append(validEmails, email)
       } else {
         invalidEmails = append(invalidEmails, email)
@@ -74,17 +62,17 @@ func main() {
   cduplicated := make(chan int)
 
   go func() {
-    WriteToCsv(validEmails, path + "/valid.csv")
+    writeToCsv(validEmails, path + "/valid.csv")
     cvalid <- 1
   }()
 
   go func() {
-    WriteToCsv(invalidEmails, path + "/invalid.csv")
+    writeToCsv(invalidEmails, path + "/invalid.csv")
     cinvalid <- 1
   }()
 
   go func() {
-    WriteToCsv(duplicatedEmails, path + "/duplicated.csv")
+    writeToCsv(duplicatedEmails, path + "/duplicated.csv")
     cduplicated <- 1
   }()
 
@@ -93,7 +81,19 @@ func main() {
   <-cduplicated
 }
 
-func WriteToCsv(emails []string, fileName string) {
+func clearEmail(email string) string {
+  email = strings.TrimSpace(email)
+  email = strings.ToLower(email)
+  email = sanitize.Accents(email)
+  return email
+}
+
+func validEmail(email string) bool {
+  match, _ := regexp.MatchString(REGEXP_EMAIL, email)
+  return match
+}
+
+func writeToCsv(emails []string, fileName string) {
   file, _ := os.Create(fileName)
   defer file.Close()
 
@@ -111,4 +111,3 @@ func WriteToCsv(emails []string, fileName string) {
   kind := strings.Replace(path.Base(fileName), path.Ext(fileName), "", -1)
   fmt.Println(kind + " emails => " + humanize.Comma(int64(len(emails))))
 }
-
