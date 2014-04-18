@@ -49,6 +49,7 @@ func main() {
 		}
 
 		email := clearEmail(line[0])
+		line[0] = email
 		if existEmails[email] {
 			duplicatedEmails = append(duplicatedEmails, line)
 		} else {
