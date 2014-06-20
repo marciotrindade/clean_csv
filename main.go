@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
 const REGEXP_EMAIL = `^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`
@@ -68,28 +69,25 @@ func main() {
 		fmt.Println("MkdirAll: %s %s", path, mkerr)
 	}
 
-	cvalid := make(chan int)
-	cinvalid := make(chan int)
-	cduplicated := make(chan int)
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(3)
 
 	go func() {
 		writeToCsv(headers, validEmails, path+"/valid.csv")
-		cvalid <- 1
+		waitGroup.Done()
 	}()
 
 	go func() {
 		writeToCsv(headers, invalidEmails, path+"/invalid.csv")
-		cinvalid <- 1
+		waitGroup.Done()
 	}()
 
 	go func() {
 		writeToCsv(headers, duplicatedEmails, path+"/duplicated.csv")
-		cduplicated <- 1
+		waitGroup.Done()
 	}()
 
-	<-cvalid
-	<-cinvalid
-	<-cduplicated
+	waitGroup.Wait()
 }
 
 func clearEmail(email string) string {
