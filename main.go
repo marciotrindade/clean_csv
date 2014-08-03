@@ -1,41 +1,32 @@
 package main
 
 import (
-	"clean_csv/go-humanize"
-	"clean_csv/sanitize"
 	"encoding/csv"
-	"fmt"
+	"log"
 	"os"
 	"path"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/kennygrant/sanitize"
 )
 
-const REGEXP_EMAIL = `^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`
+var regexpEmail = `^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`
 
+// main function that initialize the program
 func main() {
+	// log an error if there is less than 2 args
+	// the first is the name of program
 	if len(os.Args) < 2 {
-		fmt.Println("You need to set the filename\nexample: ./clean_csv sample.csv")
-		return
+		log.Fatal("You need to set the filename\nexample: ./clean_csv sample.csv")
 	}
 
-	file, err := os.Open(os.Args[1])
-	if err != nil {
-		fmt.Println("Error:", err)
-		return
-	}
-	defer file.Close()
+	// set fileName from args of program
+	fileName := os.Args[1]
 
-	reader := csv.NewReader(file)
-	reader.Comma = ','
-	reader.TrimLeadingSpace = true
-	lines, err := reader.ReadAll()
-	if err != nil {
-		fmt.Println("Error reading all lines: %v", err)
-		return
-	}
+	lines := ReadCsv(fileName)
 
 	var headers []string
 	var validEmails [][]string
@@ -49,12 +40,12 @@ func main() {
 			continue
 		}
 
-		email := clearEmail(line[0])
+		email := ClearEmail(line[0])
 		line[0] = email
 		if existEmails[email] {
 			duplicatedEmails = append(duplicatedEmails, line)
 		} else {
-			if validEmail(email) {
+			if ValidEmail(email) {
 				validEmails = append(validEmails, line)
 			} else {
 				invalidEmails = append(invalidEmails, line)
@@ -64,51 +55,68 @@ func main() {
 	}
 
 	path := path.Dir(os.Args[1]) + "/output"
-	mkerr := os.MkdirAll(path, 0755)
-	if mkerr != nil {
-		fmt.Println("MkdirAll: %s %s", path, mkerr)
-	}
 
-	var waitGroup sync.WaitGroup
-	waitGroup.Add(3)
+	CreateFolder(path)
 
-	go func() {
-		writeToCsv(headers, validEmails, path+"/valid.csv")
-		waitGroup.Done()
-	}()
+	var wg sync.WaitGroup
+	wg.Add(3)
 
-	go func() {
-		writeToCsv(headers, invalidEmails, path+"/invalid.csv")
-		waitGroup.Done()
-	}()
+	go writeToCsv(headers, validEmails, path+"/valid.csv", &wg)
+	go writeToCsv(headers, invalidEmails, path+"/invalid.csv", &wg)
+	go writeToCsv(headers, duplicatedEmails, path+"/duplicated.csv", &wg)
 
-	go func() {
-		writeToCsv(headers, duplicatedEmails, path+"/duplicated.csv")
-		waitGroup.Done()
-	}()
-
-	waitGroup.Wait()
+	wg.Wait()
 }
 
-func clearEmail(email string) string {
+// ReadCsv is a function that open the file,
+// read al the content and return it, if an error
+// occurs it's log it and close the program
+func ReadCsv(fileName string) [][]string {
+	file, err := os.Open(fileName)
+	if err != nil {
+		log.Fatal("Error:", err)
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	reader.Comma = ','
+	reader.TrimLeadingSpace = true
+
+	lines, err := reader.ReadAll()
+	if err != nil {
+		log.Fatal("Error reading all lines: ", err)
+	}
+	return lines
+}
+
+// ClearEmail is a function that remove spaces,
+// transform in lower case and remove accents
+// of string that should be an email
+func ClearEmail(email string) string {
 	email = strings.TrimSpace(email)
 	email = strings.ToLower(email)
 	email = sanitize.Accents(email)
 	return email
 }
 
-func validEmail(email string) bool {
-	match, _ := regexp.MatchString(REGEXP_EMAIL, email)
+// ValidEmail is a function that return is an email
+// is valid or not
+func ValidEmail(email string) bool {
+	match, _ := regexp.MatchString(regexpEmail, email)
 	return match
 }
 
-type sortByEmail [][]string
+// CreateFolder is a function to create a
+// folder with spefic permission if an error
+// occurs it's log it and close the program
+func CreateFolder(path string) {
+	err := os.MkdirAll(path, 0755)
+	if err != nil {
+		log.Fatal("Error to create", path, err)
+	}
+}
 
-func (p sortByEmail) Len() int           { return len(p) }
-func (p sortByEmail) Less(i, j int) bool { return p[i][0] < p[j][0] }
-func (p sortByEmail) Swap(i, j int)      { p[i][0], p[j][0] = p[j][0], p[i][0] }
-
-func writeToCsv(headers []string, lines [][]string, fileName string) {
+func writeToCsv(headers []string, lines [][]string, fileName string, wg *sync.WaitGroup) {
 	file, _ := os.Create(fileName)
 	defer file.Close()
 
@@ -125,5 +133,12 @@ func writeToCsv(headers []string, lines [][]string, fileName string) {
 	file.Close()
 
 	kind := strings.Replace(path.Base(fileName), path.Ext(fileName), "", -1)
-	fmt.Println(kind + " emails => " + humanize.Comma(int64(len(lines))))
+	log.Printf("%s emails => %d\n", kind, len(lines))
+	wg.Done()
 }
+
+type sortByEmail [][]string
+
+func (p sortByEmail) Len() int           { return len(p) }
+func (p sortByEmail) Less(i, j int) bool { return p[i][0] < p[j][0] }
+func (p sortByEmail) Swap(i, j int)      { p[i][0], p[j][0] = p[j][0], p[i][0] }
